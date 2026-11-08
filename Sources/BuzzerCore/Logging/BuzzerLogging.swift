@@ -129,6 +129,14 @@ public enum BuzzerLogValue {
         if let text = value as? String { return "'\(text)'" }
         return String(describing: value)
     }
+    /// "length 12", for typed text that must not be logged. Matches the app's
+    /// `LogValue.length(of:)`.
+    public static func length(of text: String) -> String {
+        "length \(text.count)"
+    }
+
+    /// How log lines write a timestamp. Matches the app's `LogEntry.timestampStyle`.
+    public static let timestampStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 }
 
 /// Drops every line. The default until a host connects a real sink.

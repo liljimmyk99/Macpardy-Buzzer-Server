@@ -30,7 +30,7 @@ public struct BuzzerTeam: Encodable, Equatable, Sendable {
 }
 
 /// Why a `claim` was refused.
-public enum ClaimRejectReason: String, Encodable, Sendable {
+public enum ClaimRejectReason: String, Encodable, Equatable, Sendable {
     case taken
     case invalidTeam
     case rateLimited
@@ -73,7 +73,7 @@ public struct ResponseTimerInfo: Equatable, Sendable {
 }
 
 /// Messages sent by the server to a connected phone client.
-public enum ServerMessage: Sendable {
+public enum ServerMessage: Equatable, Sendable {
     /// Sent after a valid join code is received. Carries the teams (with claim
     /// flags) so the phone can render its team picker.
     case joinAccepted(teams: [BuzzerTeam])
