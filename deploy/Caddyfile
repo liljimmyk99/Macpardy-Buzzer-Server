@@ -1,0 +1,11 @@
+# HTTPS in front of the Macpardy buzzer server (#103). Caddy gets and renews a
+# Let's Encrypt certificate for the domain, upgrades WebSockets on its own,
+# and sets X-Forwarded-For to the phone's address.
+#
+# With MACPARDY_DOMAIN=localhost, Caddy uses its own local certificate
+# instead, which is handy for trying the setup on one machine.
+
+{$MACPARDY_DOMAIN} {
+	encode gzip
+	reverse_proxy buzzer:8472
+}

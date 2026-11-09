@@ -281,6 +281,41 @@ final class BuzzerRoomTests: XCTestCase {
 
     // MARK: - Heartbeat
 
+    // MARK: - Host away (#103)
+
+    func testHostAwayShowsPhonesUnavailableAndIgnoresBuzzes() async {
+        let phone = await phone(holding: red)
+        await room.setBuzzerMode(.armed)
+        phone.clear()
+
+        await room.setHostAway(true)
+        XCTAssertEqual(buzzerStates(phone), [.unavailable])
+
+        phone.clear()
+        await room.receive(.buzz, from: phone.id)
+        XCTAssertEqual(phone.messages, [], "a buzz while the host is away does nothing")
+    }
+
+    func testHostBackRestoresTheRealBuzzerState() async {
+        let phone = await phone(holding: red)
+        await room.setBuzzerMode(.armed)
+        await room.setHostAway(true)
+        phone.clear()
+
+        await room.setHostAway(false)
+        XCTAssertEqual(buzzerStates(phone), [.armed])
+        await room.receive(.buzz, from: phone.id)
+        await scheduler.advance(by: BuzzerConstants.tieWindow + 0.01)
+        XCTAssertEqual(buzzerStates(phone).last, .first)
+    }
+
+    func testPhoneClaimingWhileHostIsAwaySeesUnavailable() async {
+        await room.setBuzzerMode(.armed)
+        await room.setHostAway(true)
+        let phone = await phone(holding: blue)
+        XCTAssertEqual(buzzerStates(phone), [.unavailable])
+    }
+
     func testJoinedPhonesArePingedOnTheHeartbeat() async {
         await room.start()
         let phone = await joinedPhone()

@@ -17,6 +17,7 @@
 //  • Logs `uiEvent`s and the phone's disconnect report from `join`
 //  • On stop, tells joined phones the session ended (`sessionEnded`) so they
 //    return to their Game PIN screen
+//  • Pauses the buzzers while a self-hosted server's host is away (#103)
 //
 
 import Foundation
@@ -41,6 +42,9 @@ public actor BuzzerRoom {
     private var sessions: [UUID: PhoneSession] = [:]
     private var heartbeat: ScheduledWork?
     private var isStopped = false
+    /// The self-hosted server lost the Mac and is waiting for it to come back
+    /// (#103): phones show the buzzer as unavailable and buzzes are ignored.
+    private var isHostAway = false
 
     /// Teams phones can pick from, as last pushed by the host. `claimed` is
     /// ignored here; it is always derived from `claims`.
@@ -76,7 +80,7 @@ public actor BuzzerRoom {
     // MARK: - Init
 
     /// - Parameters:
-    ///   - joinCode: The Game PIN. The app generates it; a self-hosted server will.
+    ///   - joinCode: The Game PIN. The app generates it; a self-hosted server's hub does (#103).
     ///   - randomIndex: Picks among teams tied on score in the tie window.
     public init(
         joinCode: String,
@@ -221,6 +225,22 @@ public actor BuzzerRoom {
         claimsChanged()
     }
 
+    // MARK: - Host presence
+
+    /// The host's connection dropped (`true`) or came back (`false`). Only a
+    /// self-hosted server calls this; the built-in server's host is the app.
+    /// While away, every phone shows the buzzer as unavailable and buzzes are
+    /// ignored; the game state underneath is kept, and on return each phone
+    /// gets its real buzzer state again.
+    public func setHostAway(_ away: Bool) {
+        guard away != isHostAway else { return }
+        isHostAway = away
+        logger.state("Host \(away ? "away: buzzers paused" : "back: buzzers resumed")")
+        for teamID in claims.claimedTeamIDs {
+            sendBuzzerState(toTeam: teamID)
+        }
+    }
+
     // MARK: - Buzzer
 
     /// Latest scores, used to break ties between simultaneous buzzes.
@@ -248,7 +268,7 @@ public actor BuzzerRoom {
     }
 
     private func handleBuzz(from session: PhoneSession) {
-        guard let teamID = claims.teamID(for: session.id) else { return }
+        guard !isHostAway, let teamID = claims.teamID(for: session.id) else { return }
         let buzz = Buzz(teamID: teamID, receivedAt: scheduler.now, score: scores[teamID] ?? 0)
         switch engine.buzz(buzz) {
         case .tooEarly:
@@ -299,7 +319,7 @@ public actor BuzzerRoom {
     }
 
     private func sendBuzzerState(toTeam teamID: UUID) {
-        send(.buzzerState(engine.phoneState(for: teamID)), toTeam: teamID)
+        send(.buzzerState(isHostAway ? .unavailable : engine.phoneState(for: teamID)), toTeam: teamID)
     }
 
     // MARK: - Response timer

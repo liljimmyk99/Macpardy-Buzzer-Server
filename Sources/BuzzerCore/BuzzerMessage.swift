@@ -14,7 +14,7 @@ import Foundation
 // MARK: - Server → Phone
 
 /// A team as shown in the phone's team picker.
-public struct BuzzerTeam: Encodable, Equatable, Sendable {
+public struct BuzzerTeam: Codable, Equatable, Sendable {
     public let id: UUID
     public let name: String
     public let color: String
@@ -45,6 +45,8 @@ public enum JoinRejectReason: String, Encodable, CaseIterable, Sendable {
     case rateLimited
     /// The page speaks a different protocol version.
     case unsupportedVersion
+    /// A self-hosted server's room already has its most phones (#103).
+    case roomFull
 
     /// Human-readable text sent as `reason`, for logs and older pages.
     public var message: String {
@@ -52,6 +54,7 @@ public enum JoinRejectReason: String, Encodable, CaseIterable, Sendable {
         case .invalidCode: "Invalid join code"
         case .rateLimited: "Too many attempts. Try again shortly."
         case .unsupportedVersion: "Unsupported protocol version"
+        case .roomFull: "This game is full"
         }
     }
 }

@@ -1,0 +1,66 @@
+# The self-hosted Macpardy buzzer server behind Caddy, which gets a Let's
+# Encrypt certificate for your domain and handles HTTPS (#103).
+#
+#   1. Point a domain at this machine (for example a DuckDNS name; the
+#      optional `duckdns` service below keeps it updated) and forward ports
+#      80 and 443 to it.
+#   2. cp .env.example .env, and set MACPARDY_DOMAIN.
+#   3. Make a host token:  openssl rand -hex 32 > deploy/host_token.txt
+#                          chmod 0444 deploy/host_token.txt
+#   4. docker compose up -d          (add --profile duckdns for the updater)
+#
+# In Macpardy: Settings > Buzzers, turn on the external server, enter
+# https://<MACPARDY_DOMAIN> and the token.
+
+services:
+  buzzer:
+    build: .
+    image: macpardy-buzzer-server
+    restart: unless-stopped
+    environment:
+      MACPARDY_HOST_TOKEN_FILE: /run/secrets/macpardy_host_token
+      MACPARDY_PUBLIC_URL: https://${MACPARDY_DOMAIN:?set MACPARDY_DOMAIN in .env}
+      # Caddy sets X-Forwarded-For; the server is only reachable through it.
+      MACPARDY_TRUST_FORWARDED_FOR: "true"
+      MACPARDY_GRACE_PERIOD: ${MACPARDY_GRACE_PERIOD:-45}
+      MACPARDY_MAX_ROOMS: ${MACPARDY_MAX_ROOMS:-20}
+      MACPARDY_MAX_PHONES_PER_ROOM: ${MACPARDY_MAX_PHONES_PER_ROOM:-24}
+      MACPARDY_LOG_LEVEL: ${MACPARDY_LOG_LEVEL:-info}
+    secrets:
+      - macpardy_host_token
+    # No published ports: only Caddy reaches it.
+    expose:
+      - "8472"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MACPARDY_DOMAIN: ${MACPARDY_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      buzzer:
+        condition: service_healthy
+
+  # Optional: keeps a DuckDNS name pointed at this network's public IP.
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    profiles: ["duckdns"]
+    restart: unless-stopped
+    environment:
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAIN:-}
+      TOKEN: ${DUCKDNS_TOKEN:-}
+
+secrets:
+  macpardy_host_token:
+    file: ./deploy/host_token.txt
+
+volumes:
+  caddy_data:
+  caddy_config:

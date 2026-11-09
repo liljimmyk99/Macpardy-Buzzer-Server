@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Macpardy! Buzzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #060ce9;
+      --gold: #f5c518;
+      --white: #ffffff;
+      --red: #e94040;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--white);
+      font-family: var(--font);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .title {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--gold);
+      letter-spacing: 0.04em;
+    }
+
+    .status-card {
+      width: 100%;
+      background: rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-icon {
+      font-size: 3rem;
+      line-height: 1;
+    }
+
+    .status-text {
+      font-size: 1.4rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .status-sub {
+      font-size: 0.95rem;
+      opacity: 0.7;
+      line-height: 1.4;
+    }
+
+    /* State-specific colours */
+    .state-connecting  .status-icon::before { content: "⏳"; }
+    .state-connected   .status-icon::before { content: "✅"; }
+    .state-removed     .status-icon::before { content: "🚫"; }
+
+    /* Spinner for connecting state */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid rgba(255,255,255,0.2);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* Motion. Screens rise in when they are shown; the buzzer button animates by state. */
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.5); }
+      60%  { transform: scale(1.12); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-10px); }
+      40%, 80% { transform: translateX(10px); }
+    }
+    @keyframes ring-green {
+      0%   { box-shadow: 0 0 0 0 rgba(51,191,89,0.6); }
+      70%, 100% { box-shadow: 0 0 0 22px rgba(51,191,89,0); }
+    }
+    @keyframes ring-gold {
+      0%   { box-shadow: 0 0 0 0 rgba(245,197,24,0.8); }
+      70%, 100% { box-shadow: 0 0 0 26px rgba(245,197,24,0); }
+    }
+    @keyframes slide-down {
+      from { opacity: 0; transform: translateY(-24px); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes row-in {
+      from { opacity: 0; transform: translateX(-16px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .pin, .teams, .wager, .answer, .response { animation: rise 0.35s ease-out; }
+    .status-icon { animation: pop 0.45s ease-out; }
+    .pin-input.shake { animation: shake 0.4s ease-in-out; }
+    .team-row.enter { animation: row-in 0.35s ease-out backwards; }
+
+    /* Game PIN entry */
+    .pin {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .pin-label { font-size: 0.95rem; font-weight: 700; opacity: 0.85; }
+    .pin-input {
+      font: inherit; font-size: 2.2rem; font-weight: 800; text-align: center;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      padding: 12px; border: 0; border-radius: 16px; width: 100%; color: #1a1a1a;
+    }
+    .pin-submit {
+      font: inherit; font-size: 1.4rem; font-weight: 800; padding: 16px;
+      border: 0; border-radius: 16px; background: var(--gold); color: #1a1a1a;
+    }
+    .pin-submit:disabled { opacity: 0.45; }
+    .pin-error { color: #ffb0b0; font-weight: 600; min-height: 1.2em; line-height: 1.3; }
+
+    /* "Unable to find client" toast, shown on the PIN screen after a lost connection */
+    .toast {
+      position: fixed; top: 16px; left: 16px; right: 16px;
+      max-width: 420px; margin: 0 auto;
+      display: flex; align-items: center; gap: 12px;
+      background: var(--red); color: var(--white);
+      border-radius: 14px; padding: 12px 14px;
+      font-weight: 700; text-align: left;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+      z-index: 10;
+      animation: slide-down 0.3s ease-out;
+    }
+    .toast[hidden] { display: none; }
+    .toast-text { flex: 1; }
+    .toast-close {
+      font: inherit; font-size: 1.2rem; line-height: 1;
+      background: transparent; color: inherit; border: 0; padding: 4px 8px;
+    }
+
+    /* Team picker */
+    .teams {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .team-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 12px 14px;
+      text-align: left;
+    }
+    .team-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      flex: none;
+    }
+    .team-name {
+      flex: 1;
+      font-size: 1.1rem;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .team-join {
+      font: inherit;
+      font-weight: 700;
+      color: #1a1a1a;
+      background: var(--gold);
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 18px;
+    }
+    .team-join:disabled {
+      opacity: 0.35;
+    }
+
+    /* Buzzer button */
+    .buzzer {
+      display: none;
+      width: 100%;
+      min-height: 200px;
+      font: inherit;
+      font-size: 2rem;
+      font-weight: 800;
+      border: 0;
+      border-radius: 24px;
+      color: #1a1a1a;
+      background: #8a8fa8;
+      touch-action: manipulation;
+      transition: background-color 0.2s ease-out, color 0.2s ease-out,
+                  opacity 0.2s ease-out, transform 0.1s ease-out;
+    }
+    .buzzer:disabled { opacity: 0.45; }
+    .buzzer:active:not(:disabled) { transform: scale(0.96); }
+    .buzzer.buzz-armed     { background: #33bf59; animation: ring-green 1.4s ease-out infinite; }
+    .buzzer.buzz-pressed   { background: #f28c26; transform: scale(0.97); }
+    .buzzer.buzz-first     { background: var(--gold); animation: ring-gold 1s ease-out infinite; }
+    .buzzer.buzz-lockedOut { background: var(--red); color: var(--white); animation: shake 0.4s ease-in-out; }
+    .buzzer.buzz-tooEarly  { background: var(--red); color: var(--white); font-size: 1.4rem; animation: shake 0.4s ease-in-out; }
+    .wager { display: none; flex-direction: column; gap: 12px; width: 100%; text-align: center; }
+    .wager-max, .wager-note { font-size: 1rem; opacity: 0.85; }
+    .wager-input {
+      font: inherit; font-size: 2rem; font-weight: 800; text-align: center;
+      padding: 12px; border: 0; border-radius: 16px; width: 100%;
+    }
+    .wager-submit {
+      font: inherit; font-size: 1.4rem; font-weight: 800; padding: 16px;
+      border: 0; border-radius: 16px; background: var(--gold); color: #1a1a1a;
+    }
+    .wager-submit:disabled { opacity: 0.45; }
+    .wager-error { color: var(--red); min-height: 1.2em; }
+
+    /* Final answer: typed while the clue is up, read-only once the response is revealed */
+    .answer { display: none; flex-direction: column; gap: 12px; width: 100%; text-align: center; }
+    .answer-label { font-size: 1rem; font-weight: 700; opacity: 0.85; }
+    .answer-input {
+      font: inherit; font-size: 1.3rem; font-weight: 600; line-height: 1.3;
+      padding: 12px; border: 0; border-radius: 16px; width: 100%;
+      color: #1a1a1a; resize: none;
+    }
+    .answer-count { font-size: 0.85rem; opacity: 0.6; text-align: right; }
+    .answer-submit {
+      font: inherit; font-size: 1.4rem; font-weight: 800; padding: 16px;
+      border: 0; border-radius: 16px; background: var(--gold); color: #1a1a1a;
+    }
+    .answer-submit:disabled { opacity: 0.45; }
+    .answer-status { font-weight: 600; color: var(--gold); min-height: 1.2em; line-height: 1.3; }
+    .answer-error { color: #ffb0b0; font-weight: 600; min-height: 1.2em; line-height: 1.3; }
+    .answer-locked {
+      font-size: 1.4rem; font-weight: 700; line-height: 1.3;
+      background: rgba(255,255,255,0.1); border-radius: 16px; padding: 16px;
+      overflow-wrap: anywhere;
+    }
+    .answer-locked.empty { font-weight: 600; opacity: 0.7; }
+
+    /* Response timer: one dot per second, going out left to right */
+    .response { display: none; flex-direction: column; align-items: center; gap: 10px; }
+    .response-label { font-size: 1rem; font-weight: 700; opacity: 0.85; }
+    .response-dots { display: flex; gap: 12px; }
+    .response-dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--gold);
+      transition: opacity 0.2s ease-out;
+    }
+    .response-dot.out { opacity: 0.18; }
+
+    /* Reduce Motion on the phone: no animation except the connecting spinner. */
+    @media (prefers-reduced-motion: reduce) {
+      *:not(.spinner), *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="title">Macpardy!</div>
+
+  <div class="status-card" id="card">
+    <div class="spinner" id="spinner"></div>
+    <div class="status-icon" id="icon" style="display:none"></div>
+    <div class="status-text" id="statusText">Connecting…</div>
+    <div class="status-sub"  id="statusSub"></div>
+    <form class="pin" id="pinForm" autocomplete="off" novalidate>
+      <label class="pin-label" for="pinInput">Game PIN</label>
+      <input class="pin-input" id="pinInput" name="pin" type="text" inputmode="text"
+             autocapitalize="characters" autocomplete="off" autocorrect="off"
+             spellcheck="false" enterkeyhint="go" placeholder="······" />
+      <button class="pin-submit" id="pinSubmit" type="submit" disabled>Join</button>
+      <div class="pin-error" id="pinError" role="alert"></div>
+    </form>
+    <div class="teams" id="teams"></div>
+    <button class="buzzer" id="buzzer" type="button"></button>
+    <div class="response" id="response">
+      <div class="response-dots" id="responseDots"></div>
+      <div class="response-label" id="responseLabel"></div>
+    </div>
+    <div class="wager" id="wager"></div>
+    <form class="answer" id="answerForm" autocomplete="off" novalidate>
+      <label class="answer-label" id="answerLabel" for="answerInput">Your answer</label>
+      <textarea class="answer-input" id="answerInput" rows="3" maxlength="200"
+                autocomplete="off" autocorrect="off" spellcheck="false"
+                enterkeyhint="send" placeholder="What is…"></textarea>
+      <div class="answer-count" id="answerCount"></div>
+      <button class="answer-submit" id="answerSubmit" type="submit">Send answer</button>
+      <div class="answer-locked" id="answerLocked"></div>
+      <div class="answer-status" id="answerStatus" role="status"></div>
+      <div class="answer-error" id="answerError" role="alert"></div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden>
+  <span class="toast-text">Unable to find client</span>
+  <button class="toast-close" id="toastClose" type="button" aria-label="Dismiss">✕</button>
+</div>
+
+<script>
+  // ─── Config ──────────────────────────────────────────────────────────────
+  const PROTOCOL_VERSION = 10;
+  const WATCHDOG_MS      = 5_000;   // server pings every 2s; silence this long = lost (only while visible)
+  const PIN_LENGTH       = 6;
+  // Same host and port as the page; `wss:` when the page came over HTTPS (a
+  // self-hosted server behind a reverse proxy, #103).
+  const WS_SCHEME        = location.protocol === "https:" ? "wss:" : "ws:";
+  const WS_URL           = `${WS_SCHEME}//${location.host}/ws`;
+
+  // ─── State ───────────────────────────────────────────────────────────────
+  // The Game PIN is the server's join code. It comes from `?code=` (QR code) or
+  // the PIN screen. A lost connection that had joined is retried once on its
+  // own (the server gives the phone its team back); if that fails, or the PIN
+  // is rejected or the game is over, the page lands on the PIN screen.
+  let pin          = normalisePin(new URLSearchParams(location.search).get("code") ?? "");
+  let pinFromURL   = pin.length === PIN_LENGTH;   // a rejected URL PIN is treated as stale
+  let acceptedPin  = null;    // last PIN the server accepted on this page
+  let ws           = null;
+  let watchdogTid  = null;
+  let lastServerMsgAt = 0;
+  let intentionalClose = false;   // the close was expected: no "Unable to find client" toast
+  let rejoining    = false;   // the current connection is the one automatic retry
+  let teams        = [];      // latest team list from the server
+  let myTeamId     = null;    // team this phone holds, if any
+  let buzzState    = "waiting";   // what the buzzer button shows, set by the server
+  let tooEarlyTid  = null;
+  let wagerInfo    = null;    // Final wager screen state from the server, null when closed
+  let wagerError   = "";
+  let answerInfo   = null;    // Final answer screen state from the server, null when closed
+  let answerError  = "";
+  let answerPending = false;  // a submitted answer hasn't been confirmed yet
+  let response     = null;    // { teamID, endsAt (ms), total } while a team is answering
+  let responseTid  = null;
+
+  // ─── Disconnect report (v8) ──────────────────────────────────────────────
+  // How the last connection ended, kept in localStorage and sent as `diag` on
+  // the next join so the Mac can log the phone's side (the Mac only sees a
+  // missing pong). Cleared once a join is accepted.
+  const DIAG_KEY     = "macpardy.lastDisconnect";
+
+  // ─── Device id (v9) ──────────────────────────────────────────────────────
+  // A random id sent with every join, so the Mac can give a phone that
+  // reconnects its team back. Kept in sessionStorage: it survives a reload or
+  // the browser restoring the tab, but two tabs on one phone don't share it
+  // (they'd keep taking the team from each other). Not a secure context, so no
+  // crypto.randomUUID; getRandomValues works on plain http.
+  const DEVICE_KEY   = "macpardy.deviceId";
+  const deviceId = (() => {
+    try {
+      const saved = sessionStorage.getItem(DEVICE_KEY);
+      if (saved && /^[A-Za-z0-9-]{1,64}$/.test(saved)) return saved;
+    } catch {}
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    const id = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+    try { sessionStorage.setItem(DEVICE_KEY, id); } catch {}
+    return id;
+  })();
+  // ─── Page events for the Mac's log (v10) ────────────────────────────────
+  // Things that happen only on this page (hidden, a tap on a disabled buzzer,
+  // the PIN screen) are sent as fire-and-forget `uiEvent`s. Events from while
+  // there's no joined connection wait here and go out after the next join.
+  const UI_EVENT_QUEUE_MAX = 20;
+  let uiEventQueue = [];
+  let lastDisabledTapAt = 0;
+
+  function uiEvent(event) {
+    const message = { type: "uiEvent", event, at: Date.now() };
+    if (joinedAt && ws && ws.readyState === WebSocket.OPEN) {
+      send(message);
+    } else {
+      uiEventQueue.push(message);
+      if (uiEventQueue.length > UI_EVENT_QUEUE_MAX) uiEventQueue.shift();
+    }
+  }
+
+  function flushUIEvents() {
+    const queued = uiEventQueue;
+    uiEventQueue = [];
+    queued.forEach(send);
+  }
+
+  let joinedAt     = 0;       // when the current connection's join was accepted (0 = not joined)
+  let hiddenMs     = 0;       // time the page spent hidden during this connection
+  let hiddenSince  = null;    // when the page was last hidden, while it still is
+
+  // ─── DOM refs ────────────────────────────────────────────────────────────
+  const card          = document.getElementById("card");
+  const spinner       = document.getElementById("spinner");
+  const icon          = document.getElementById("icon");
+  const statusText    = document.getElementById("statusText");
+  const statusSub     = document.getElementById("statusSub");
+  const pinForm       = document.getElementById("pinForm");
+  const pinInput      = document.getElementById("pinInput");
+  const pinSubmit     = document.getElementById("pinSubmit");
+  const pinError      = document.getElementById("pinError");
+  const toast         = document.getElementById("toast");
+  const toastClose    = document.getElementById("toastClose");
+  const teamsEl       = document.getElementById("teams");
+  const buzzerEl      = document.getElementById("buzzer");
+  const wagerEl       = document.getElementById("wager");
+  const responseEl    = document.getElementById("response");
+  const responseDots  = document.getElementById("responseDots");
+  const responseLabel = document.getElementById("responseLabel");
+  const answerForm    = document.getElementById("answerForm");
+  const answerLabel   = document.getElementById("answerLabel");
+  const answerInput   = document.getElementById("answerInput");
+  const answerCount   = document.getElementById("answerCount");
+  const answerSubmit  = document.getElementById("answerSubmit");
+  const answerLocked  = document.getElementById("answerLocked");
+  const answerStatus  = document.getElementById("answerStatus");
+  const answerErrorEl = document.getElementById("answerError");
+
+  const BUZZ_LABELS = {
+    waiting:     "Waiting for the question\u2026",
+    unavailable: "Daily Double",
+    armed:       "BUZZ!",
+    pressed:     "Buzzed\u2026",
+    first:       "You\u2019re up!",
+    lockedOut:   "Locked out",
+    tooEarly:    "Slow your horses bud, too early",
+  };
+
+  const TEAM_COLORS = {
+    blue: "#3373f2", red: "#e64040", green: "#33bf59",
+    yellow: "#f2d933", purple: "#994dd9", orange: "#f28c26",
+  };
+
+  // ─── UI helpers ──────────────────────────────────────────────────────────
+  // States: "pin" (Game PIN screen), "connecting", "connected", "removed".
+  function setState(state, text, sub = "") {
+    card.className = `status-card state-${state}`;
+    statusText.textContent = text;
+    statusSub.textContent  = sub;
+    spinner.style.display = state === "connecting" ? "block" : "none";
+    icon.style.display    = state === "connected" || state === "removed" ? "block" : "none";
+    pinForm.style.display = state === "pin" ? "flex" : "none";
+    if (state !== "connected") teamsEl.style.display = "none";
+    if (state !== "connected") buzzerEl.style.display = "none";
+    if (state !== "connected") wagerEl.style.display = "none";
+    if (state !== "connected") responseEl.style.display = "none";
+    if (state !== "connected") answerForm.style.display = "none";
+  }
+
+  function renderBuzzer() {
+    buzzerEl.className = `buzzer buzz-${buzzState}`;
+    buzzerEl.textContent = BUZZ_LABELS[buzzState] ?? "";
+    // Pressable while waiting too: that press is answered with "too early".
+    buzzerEl.disabled = !["armed", "waiting"].includes(buzzState);
+    buzzerEl.style.display = "block";
+  }
+
+  const WAGER_ERRORS = {
+    overMax:     "That is more than you can wager.",
+    negative:    "Wagers can\u2019t be negative.",
+    locked:      "Your wager is already locked in.",
+    notEligible: "Your team can\u2019t wager.",
+    notOpen:     "Wagering isn\u2019t open.",
+  };
+
+  // ─── Response timer ──────────────────────────────────────────────────────
+  // The server sends start / stop events; the countdown runs here.
+  function startResponse(payload) {
+    if (!payload?.teamID) return;
+    const remaining = Number(payload.remaining) || 0;
+    response = {
+      teamID: payload.teamID,
+      endsAt: Date.now() + remaining * 1_000,
+      total: Math.max(1, Math.round(Number(payload.total) || 5)),
+    };
+    clearInterval(responseTid);
+    responseTid = setInterval(renderResponse, 100);
+    renderResponse();
+  }
+
+  function stopResponse() {
+    response = null;
+    clearInterval(responseTid);
+    responseTid = null;
+    renderResponse();
+  }
+
+  // Dots under the buzzer while any team is answering. At zero they stay out
+  // until the host judges the answer.
+  function renderResponse() {
+    if (!response || !myTeamId || wagerInfo || answerInfo) {
+      responseEl.style.display = "none";
+      return;
+    }
+    const left = Math.max(0, Math.ceil((response.endsAt - Date.now()) / 1_000 - 0.05));
+    if (left === 0) { clearInterval(responseTid); responseTid = null; }
+
+    // Dots are reused between ticks so each one fades out rather than being replaced.
+    if (responseDots.children.length !== response.total) {
+      responseDots.replaceChildren(...Array.from({ length: response.total }, () => {
+        const dot = document.createElement("span");
+        dot.className = "response-dot";
+        return dot;
+      }));
+    }
+    // Dots on the right stay lit longest.
+    Array.from(responseDots.children).forEach((dot, i) => {
+      dot.classList.toggle("out", i < response.total - left);
+    });
+
+    const team = teams.find(t => t.id === response.teamID);
+    if (left === 0) {
+      responseLabel.textContent = "Time\u2019s up";
+    } else if (response.teamID === myTeamId) {
+      responseLabel.textContent = `Answer now \u2013 ${left}s`;
+    } else {
+      responseLabel.textContent = `${team?.name ?? "A team"} is answering`;
+    }
+    responseEl.style.display = "flex";
+  }
+
+  // Final wager screen: input until locked, then a read-only confirmation.
+  // Teams with no points left only see the sorry message.
+  function renderWager() {
+    buzzerEl.style.display = "none";
+    const note = text => {
+      const el = document.createElement("div");
+      el.className = "wager-note";
+      el.textContent = text;
+      return el;
+    };
+
+    if (!wagerInfo.eligible) {
+      wagerEl.replaceChildren(note(
+        "Sorry team, you can still enter an answer but sadly you can\u2019t win any points"));
+    } else if (wagerInfo.wager != null) {
+      wagerEl.replaceChildren(note(`Wager locked: $${wagerInfo.wager}`));
+    } else {
+      const max = document.createElement("div");
+      max.className = "wager-max";
+      max.textContent = `Your wager (max $${wagerInfo.max})`;
+
+      const input = document.createElement("input");
+      input.className = "wager-input";
+      input.type = "number";
+      input.inputMode = "numeric";
+      input.min = 0;
+      input.max = wagerInfo.max;
+      input.placeholder = "0";
+
+      const submit = document.createElement("button");
+      submit.className = "wager-submit";
+      submit.type = "button";
+      submit.textContent = "Lock in wager";
+      submit.addEventListener("click", () => {
+        const amount = Number.parseInt(input.value, 10);
+        if (Number.isNaN(amount)) { wagerError = "Enter a number."; renderTeams(); return; }
+        wagerError = "";
+        send({ type: "submitWager", amount });
+      });
+
+      const error = document.createElement("div");
+      error.className = "wager-error";
+      error.textContent = wagerError;
+
+      wagerEl.replaceChildren(max, input, submit, error, note(
+        "If you don\u2019t enter a wager, you bet everything."));
+    }
+    wagerEl.style.display = "flex";
+  }
+
+  // ─── Final answer ────────────────────────────────────────────────────────
+  // The form is built once and updated in place, so a `teams` update or the
+  // server's reply never wipes what the player is typing.
+  const ANSWER_ERRORS = {
+    notOpen: "Answers are locked.",
+    empty:   "Type an answer first.",
+    tooLong: "That answer is too long.",
+  };
+
+  // Same clean-up as the server: one line, no surrounding spaces.
+  function normaliseAnswer(value) {
+    return String(value).split(/\r\n|\r|\n/).join(" ").trim();
+  }
+
+  function renderAnswer() {
+    buzzerEl.style.display = "none";
+    const open  = answerInfo.open;
+    const saved = answerInfo.answer ?? null;
+    const draft = normaliseAnswer(answerInput.value);
+
+    answerInput.maxLength       = answerInfo.maxLength ?? 200;
+    answerInput.style.display   = open ? "block" : "none";
+    answerCount.style.display   = open ? "block" : "none";
+    answerSubmit.style.display  = open ? "block" : "none";
+    answerLocked.style.display  = open ? "none" : "block";
+
+    if (open) {
+      answerLabel.textContent = "Your Final answer";
+      answerCount.textContent = `${answerInput.value.length}/${answerInput.maxLength}`;
+      answerSubmit.textContent = answerPending ? "Sending\u2026" : (saved == null ? "Send answer" : "Update answer");
+      answerSubmit.disabled = answerPending || draft === "" || draft === saved;
+      answerStatus.textContent = saved == null
+        ? "You can change it until the answer is revealed."
+        : (draft === saved ? "Answer saved. You can change it until the answer is revealed."
+                           : "Not sent yet \u2013 tap Update answer.");
+    } else {
+      answerLabel.textContent = "Answers are locked";
+      answerLocked.classList.toggle("empty", saved == null);
+      answerLocked.textContent = saved ?? "You didn\u2019t send an answer.";
+      answerStatus.textContent = "";
+    }
+    answerErrorEl.textContent = answerError;
+    answerForm.style.display = "flex";
+  }
+
+  function submitAnswer() {
+    if (!answerInfo?.open || answerPending) return;
+    const answer = normaliseAnswer(answerInput.value);
+    if (!answer) { answerError = ANSWER_ERRORS.empty; renderAnswer(); return; }
+    answerError = "";
+    answerPending = true;
+    send({ type: "submitAnswer", answer });
+    renderAnswer();
+  }
+
+  answerForm.addEventListener("submit", event => {
+    event.preventDefault();
+    submitAnswer();
+  });
+
+  // Enter sends rather than adding a line break (answers are one line).
+  answerInput.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      submitAnswer();
+    }
+  });
+
+  answerInput.addEventListener("input", () => {
+    answerError = "";
+    if (answerInfo) renderAnswer();
+  });
+
+  function resetAnswer() {
+    answerInfo = null;
+    answerError = "";
+    answerPending = false;
+    answerInput.value = "";
+  }
+
+  // Shows the team picker, or the held team's status once this phone has one.
+  function renderTeams() {
+    const mine = teams.find(t => t.id === myTeamId);
+    if (myTeamId && !mine) myTeamId = null;   // our team was deleted
+
+    if (mine) {
+      setState("connected", `You\u2019re ${mine.name}`);
+      if (answerInfo) {
+        wagerEl.style.display = "none";
+        renderAnswer();
+      } else if (wagerInfo) {
+        answerForm.style.display = "none";
+        renderWager();
+      } else {
+        wagerEl.style.display = "none";
+        answerForm.style.display = "none";
+        renderBuzzer();
+      }
+      renderResponse();
+      // setState keeps the list visible in the connected state, so hide it here.
+      teamsEl.replaceChildren();
+      teamsEl.style.display = "none";
+      return;
+    }
+
+    responseEl.style.display = "none";
+    answerForm.style.display = "none";
+    setState("connected", "Pick your team",
+             teams.length ? "" : "The host hasn\u2019t set up any teams yet.");
+    const firstShow = teamsEl.style.display !== "flex";   // not on later updates
+    if (firstShow) uiEvent("teamPickerOpened");
+    teamsEl.replaceChildren(...teams.map((team, index) => {
+      const row  = document.createElement("div");
+      row.className = firstShow ? "team-row enter" : "team-row";
+      row.style.animationDelay = `${index * 70}ms`;
+
+      const dot  = document.createElement("span");
+      dot.className = "team-dot";
+      dot.style.background = TEAM_COLORS[team.color] ?? "#999";
+
+      const name = document.createElement("span");
+      name.className = "team-name";
+      name.textContent = team.name;
+
+      const join = document.createElement("button");
+      join.className = "team-join";
+      join.textContent = team.claimed ? "Taken" : "Join";
+      join.disabled = team.claimed;
+      join.addEventListener("click", () => send({ type: "claim", teamID: team.id }));
+
+      row.append(dot, name, join);
+      return row;
+    }));
+    teamsEl.style.display = "flex";
+  }
+
+  buzzerEl.addEventListener("click", () => {
+    if (buzzState === "armed") {
+      buzzState = "pressed";   // instant feedback; the server has the final say
+      renderBuzzer();
+    }
+    send({ type: "buzz" });
+  });
+
+  // A disabled button gets no click, so taps on it are caught on the way down.
+  // At most one report a second.
+  document.addEventListener("pointerdown", event => {
+    if (!buzzerEl.disabled || buzzerEl.style.display === "none") return;
+    const rect = buzzerEl.getBoundingClientRect();
+    const inside = event.clientX >= rect.left && event.clientX <= rect.right
+                && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    if (!inside || Date.now() - lastDisabledTapAt < 1_000) return;
+    lastDisabledTapAt = Date.now();
+    uiEvent("disabledBuzzerTap");
+  }, true);
+
+  // ─── Game PIN screen ─────────────────────────────────────────────────────
+  // Upper-cases and drops anything that can't be in a PIN (spaces, dashes).
+  function normalisePin(value) {
+    return String(value).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, PIN_LENGTH);
+  }
+
+  function updatePinSubmit() {
+    pinSubmit.disabled = normalisePin(pinInput.value).length !== PIN_LENGTH;
+  }
+
+  // Leaves the game and shows the PIN screen. `value` pre-fills the field.
+  function showPin({ value = "", error = "", sub = "" } = {}) {
+    stopWatchdog();
+    myTeamId   = null;
+    wagerInfo  = null;
+    wagerError = "";
+    resetAnswer();
+    buzzState  = "waiting";
+    clearTimeout(tooEarlyTid);
+    stopResponse();
+    setState("pin", "Enter the Game PIN", sub);
+    pinInput.value = normalisePin(value);
+    pinError.textContent = error;
+    if (error) {
+      pinInput.classList.remove("shake");
+      void pinInput.offsetWidth;   // restart the animation
+      pinInput.classList.add("shake");
+    }
+    updatePinSubmit();
+    pinInput.focus();
+  }
+
+  function showToast() { toast.hidden = false; }
+  function hideToast() { toast.hidden = true; }
+
+  // Keeps `?code=` in the address bar only while it's a PIN the server accepted,
+  // so a refresh rejoins and a finished game's PIN isn't retried.
+  function setURLCode(code) {
+    const url = code ? `${location.pathname}?code=${encodeURIComponent(code)}` : location.pathname;
+    history.replaceState(null, "", url);
+  }
+
+  pinInput.addEventListener("input", () => {
+    const value = normalisePin(pinInput.value);
+    if (value !== pinInput.value) pinInput.value = value;
+    pinError.textContent = "";
+    updatePinSubmit();
+  });
+
+  pinForm.addEventListener("submit", event => {
+    event.preventDefault();
+    const value = normalisePin(pinInput.value);
+    if (value.length !== PIN_LENGTH) return;
+    pin = value;
+    pinFromURL = false;
+    rejoining = false;
+    uiEvent("pinSubmitted");
+    connect();
+  });
+
+  toast.addEventListener("click", hideToast);
+  toastClose.addEventListener("click", event => { event.stopPropagation(); hideToast(); });
+
+  // ─── Disconnect report helpers ───────────────────────────────────────────
+  function pageHidden() {
+    if (hiddenSince === null) {
+      hiddenSince = Date.now();
+      uiEvent("pageHidden");
+    }
+  }
+
+  function pageVisible() {
+    if (hiddenSince !== null) uiEvent("pageVisible");
+    if (hiddenSince !== null) {
+      hiddenMs += Date.now() - hiddenSince;
+      hiddenSince = null;
+    }
+    // Timers and messages were paused while hidden: give the socket a full
+    // watchdog window to hear a ping before calling it lost.
+    lastServerMsgAt = Date.now();
+  }
+
+  document.addEventListener("visibilitychange", () => document.hidden ? pageHidden() : pageVisible());
+  window.addEventListener("pagehide", pageHidden);
+  window.addEventListener("pageshow", () => { if (!document.hidden) pageVisible(); });
+
+  function startConnectionClock() {
+    joinedAt = Date.now();
+    hiddenMs = 0;
+    hiddenSince = document.hidden ? Date.now() : null;
+  }
+
+  // Saves how the joined connection ended. Only the first call per connection counts.
+  function recordDisconnect(cause, closeCode = null, closeReason = "") {
+    if (!joinedAt) return;
+    const now = Date.now();
+    const report = {
+      cause,
+      connectedMs: now - joinedAt,
+      hiddenMs: hiddenMs + (hiddenSince !== null ? now - hiddenSince : 0),
+      hiddenAtLoss: hiddenSince !== null || document.hidden,
+      at: now,
+    };
+    if (closeCode !== null) report.closeCode = closeCode;
+    if (closeReason) report.closeReason = String(closeReason).slice(0, 64);
+    joinedAt = 0;
+    try { localStorage.setItem(DIAG_KEY, JSON.stringify(report)); } catch {}
+  }
+
+  // The saved report as the join's `diag` object, or undefined.
+  function pendingDiag() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DIAG_KEY) ?? "null");
+      if (!saved || typeof saved !== "object") return undefined;
+      const { at, ...diag } = saved;
+      if (typeof at === "number") diag.secondsSince = Math.max(0, Math.round((Date.now() - at) / 1000));
+      return diag;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function clearDiag() {
+    try { localStorage.removeItem(DIAG_KEY); } catch {}
+  }
+
+  // ─── Connection ──────────────────────────────────────────────────────────
+  // Opens a socket and joins with `pin`. Called from the PIN screen, on load
+  // with `?code=`, and once after a joined connection is lost.
+  function connect(label = "Connecting…") {
+    stopWatchdog();
+    if (ws) {
+      const old = ws;
+      ws = null;          // its close event is ignored from here on
+      joinedAt = 0;       // replaced on purpose: nothing to report
+      old.close();
+    }
+    hideToast();
+    intentionalClose = false;
+    setState("connecting", label);
+
+    let socket;
+    try {
+      socket = new WebSocket(WS_URL);
+    } catch {
+      connectionLost(null, "socketError");
+      return;
+    }
+    ws = socket;
+
+    socket.addEventListener("open", () => {
+      if (socket !== ws) return;
+      myTeamId = null;     // a new connection never holds a team yet
+      wagerInfo = null;
+      resetAnswer();       // the server resends it after the claim if answering is on
+      buzzState = "waiting";
+      stopResponse();      // the server resends it after the claim if still running
+      const join = { type: "join", version: PROTOCOL_VERSION, code: pin, device: deviceId };
+      const diag = pendingDiag();
+      if (diag) join.diag = diag;
+      send(join);
+      startWatchdog(socket);
+    });
+
+    socket.addEventListener("message", ({ data }) => {
+      if (socket !== ws) return;
+      lastServerMsgAt = Date.now();
+      let msg;
+      try { msg = JSON.parse(data); } catch { return; }
+
+      switch (msg.type) {
+        case "joinAccepted":
+          rejoining = false;
+          clearDiag();
+          startConnectionClock();
+          acceptedPin = pin;
+          setURLCode(pin);
+          teams = msg.payload?.teams ?? [];
+          flushUIEvents();     // older events first
+          renderTeams();
+          break;
+
+        case "teams":
+          teams = msg.payload?.teams ?? [];
+          renderTeams();
+          break;
+
+        case "claimAccepted":
+          myTeamId = msg.payload?.teamID ?? null;
+          renderTeams();
+          break;
+
+        case "claimRejected": {
+          const reasons = {
+            taken: "Someone else just took that team.",
+            invalidTeam: "That team no longer exists.",
+            rateLimited: "Too many attempts. Wait a moment and try again.",
+          };
+          renderTeams();
+          statusSub.textContent = reasons[msg.payload?.reason] ?? "Couldn’t join that team.";
+          break;
+        }
+
+        case "wagerInfo":
+          wagerInfo = msg.payload ?? null;
+          wagerError = "";
+          if (myTeamId) renderTeams();
+          break;
+
+        case "wagerLocked":
+          if (wagerInfo) wagerInfo.wager = msg.payload?.wager ?? 0;
+          wagerError = "";
+          if (myTeamId) renderTeams();
+          break;
+
+        case "wagerRejected":
+          wagerError = WAGER_ERRORS[msg.payload?.reason] ?? "Couldn’t submit that wager.";
+          if (myTeamId) renderTeams();
+          break;
+
+        case "wagerClosed":
+          wagerInfo = null;
+          wagerError = "";
+          if (myTeamId) renderTeams();
+          break;
+
+        case "answerInfo": {
+          const info = msg.payload ?? null;
+          // Entering the screen (or rejoining): start from the saved answer.
+          // Later updates keep whatever the player is typing.
+          if (!answerInfo && info) answerInput.value = info.answer ?? "";
+          answerInfo = info;
+          answerError = "";
+          answerPending = false;
+          if (myTeamId) renderTeams();
+          break;
+        }
+
+        case "answerSaved":
+          if (answerInfo) answerInfo.answer = msg.payload?.answer ?? null;
+          answerError = "";
+          answerPending = false;
+          if (myTeamId) renderTeams();
+          break;
+
+        case "answerRejected":
+          answerError = ANSWER_ERRORS[msg.payload?.reason] ?? "Couldn\u2019t send that answer.";
+          answerPending = false;
+          if (myTeamId) renderTeams();
+          break;
+
+        case "answerClosed":
+          resetAnswer();
+          if (myTeamId) renderTeams();
+          break;
+
+        case "removed":
+          recordDisconnect("removed");
+          intentionalClose = true;
+          stopWatchdog();
+          stopResponse();
+          setState("removed", "Removed by host",
+                   "Reload the page to join again.");
+          socket.close();
+          break;
+
+        case "joinRejected":
+          joinRejected(socket, msg.payload);
+          break;
+
+        case "sessionEnded":
+          sessionEnded(socket);
+          break;
+
+        case "ping":
+          send({ type: "pong" });
+          break;
+
+        case "buzzerState": {
+          clearTimeout(tooEarlyTid);
+          buzzState = msg.payload?.state ?? "waiting";
+          // "Too early" is a flash; the buzzer is still disabled afterwards.
+          if (buzzState === "tooEarly") {
+            tooEarlyTid = setTimeout(() => { buzzState = "waiting"; if (myTeamId) renderBuzzer(); }, 2_000);
+          }
+          if (myTeamId) renderBuzzer();
+          break;
+        }
+
+        case "responseTimer":
+          startResponse(msg.payload);
+          break;
+
+        case "responseTimerStopped":
+          stopResponse();
+          break;
+
+        case "state":
+          break;
+      }
+    });
+
+    // Both events fire on a failed connection; connectionLost is idempotent.
+    socket.addEventListener("close", event => connectionLost(socket, "socketClose", event.code, event.reason));
+    socket.addEventListener("error", () => connectionLost(socket, "socketError"));
+  }
+
+  // The server refused the PIN. A PIN that worked before (or came from the QR
+  // code) means the game ended or the PIN changed, so it's cleared.
+  function joinRejected(socket, payload) {
+    uiEvent("pinRejected");
+    intentionalClose = true;
+    ws = null;
+    socket.close();
+
+    switch (payload?.code ?? "invalidCode") {
+      case "rateLimited":
+        showPin({ value: pin, error: "Too many attempts. Try again shortly." });
+        return;
+      case "unsupportedVersion":
+        showPin({ value: pin, error: "This page is out of date. Reload it." });
+        return;
+      case "roomFull":
+        showPin({ value: pin, error: "This game is full. Ask the host to remove a phone." });
+        return;
+    }
+
+    if (pin === acceptedPin || pinFromURL) {
+      acceptedPin = null;
+      pinFromURL  = false;
+      pin = "";
+      setURLCode(null);
+      showPin({ error: "That game has ended or the PIN changed. Enter the Game PIN shown on screen." });
+    } else {
+      showPin({ value: pin, error: "Wrong Game PIN. Check the screen and try again." });
+    }
+  }
+
+  // The host completed the game, resumed a save, or left: the PIN is dead.
+  function sessionEnded(socket) {
+    recordDisconnect("sessionEnded");
+    intentionalClose = true;
+    ws = null;
+    acceptedPin = null;
+    pinFromURL  = false;
+    pin = "";
+    setURLCode(null);
+    hideToast();
+    showPin({ sub: "Game over. Enter the new Game PIN to play again." });
+    socket.close();
+  }
+
+  // Unexpected close, failed connection, or watchdog silence. A connection
+  // that had joined is retried once with the same PIN (usually the phone was in
+  // the background or the Wi-Fi blipped; the Mac restores its team). Otherwise,
+  // or if the retry fails: back to the PIN screen with the last PIN filled in,
+  // and the "Unable to find client" toast.
+  function connectionLost(socket, cause, closeCode = null, closeReason = "") {
+    if (socket !== ws || intentionalClose) return;
+    const wasJoined = joinedAt > 0;
+    recordDisconnect(cause, closeCode, closeReason);
+    intentionalClose = true;
+    ws = null;
+    if (wasJoined && acceptedPin && !rejoining) {
+      rejoining = true;
+      pin = acceptedPin;
+      uiEvent("reconnecting");
+      connect("Reconnecting…");
+      return;
+    }
+    rejoining = false;
+    showPin({ value: acceptedPin ?? pin });
+    showToast();
+  }
+
+  // If the network drops silently no close/error event fires, so treat a long
+  // silence from the server as a lost connection. Not while the page is hidden:
+  // the browser pauses it then, and that's not the Mac going away.
+  function startWatchdog(socket) {
+    stopWatchdog();
+    lastServerMsgAt = Date.now();
+    watchdogTid = setInterval(() => {
+      if (socket !== ws) { stopWatchdog(); return; }
+      if (document.hidden) return;
+      if (Date.now() - lastServerMsgAt > WATCHDOG_MS) {
+        connectionLost(socket, "watchdog");
+        socket.close();
+      }
+    }, 1_000);
+  }
+
+  function stopWatchdog() {
+    clearInterval(watchdogTid);
+    watchdogTid = null;
+  }
+
+  function send(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(obj));
+    }
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  // With a full `?code=` (QR code) join straight away; otherwise ask for the PIN.
+  if (pin.length === PIN_LENGTH) {
+    connect();
+  } else {
+    showPin({ value: pin });
+  }
+</script>
+</body>
+</html>

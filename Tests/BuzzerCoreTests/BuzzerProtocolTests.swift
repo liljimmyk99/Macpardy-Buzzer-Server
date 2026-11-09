@@ -244,6 +244,7 @@ final class BuzzerProtocolTests: XCTestCase {
             .invalidCode: ("invalidCode", "Invalid join code"),
             .rateLimited: ("rateLimited", "Too many attempts. Try again shortly."),
             .unsupportedVersion: ("unsupportedVersion", "Unsupported protocol version"),
+            .roomFull: ("roomFull", "This game is full"),
         ]
         XCTAssertEqual(expected.count, JoinRejectReason.allCases.count)
         for (reason, values) in expected {

@@ -71,7 +71,7 @@ final class WebSocketFrameParserTests: XCTestCase {
     }
 
     func testOversizedLengthIsInvalid() {
-        var data = Data([0x81, 0x80 | 127])
+        var data = Data([0x81, 0x80 | 127] as [UInt8])
         data.append(contentsOf: [0, 0, 0, 0, 0, 1, 0, 1])   // 65_537 bytes
         data.append(contentsOf: [0, 0, 0, 0])
         XCTAssertEqual(WebSocketFrameParser.parse(data), .invalid)

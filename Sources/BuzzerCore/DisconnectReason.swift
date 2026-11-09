@@ -34,6 +34,8 @@ public enum DisconnectReason: Equatable, Sendable {
     case serverStopped
     /// The same phone rejoined on a new connection and took its team back.
     case replacedByNewConnection
+    /// A self-hosted server already had its most connections waiting to join (#103).
+    case serverBusy
 
     public var description: String {
         switch self {
@@ -57,6 +59,8 @@ public enum DisconnectReason: Equatable, Sendable {
             "removed by the host"
         case .serverStopped:
             "the buzzer server stopped"
+        case .serverBusy:
+            "the server has too many connections waiting to join"
         case .replacedByNewConnection:
             "the same phone reconnected and took its team back"
         }
@@ -69,7 +73,7 @@ public enum DisconnectReason: Equatable, Sendable {
             .info
         case .phoneClosed(let code):
             code == 1000 || code == 1001 ? .info : .warning
-        case .connectionEnded, .networkError, .heartbeatTimeout, .neverJoined, .invalidFrame, .oversizedMessage:
+        case .connectionEnded, .networkError, .heartbeatTimeout, .neverJoined, .invalidFrame, .oversizedMessage, .serverBusy:
             .warning
         }
     }
