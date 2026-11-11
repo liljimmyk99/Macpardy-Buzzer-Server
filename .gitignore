@@ -1,0 +1,5 @@
+.build/
+.swiftpm/
+.env
+deploy/host_token.txt
+.DS_Store

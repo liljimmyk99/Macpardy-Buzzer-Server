@@ -1,6 +1,6 @@
 # MacpardyBuzzer
 
-The phone buzzer for [Macpardy](../../README.md): the rules (`BuzzerCore`), the phone page
+The phone buzzer for [Macpardy](https://github.com/liljimmyk99/Macpardy): the rules (`BuzzerCore`), the phone page
 (`BuzzerWebPage`), and a **self-hosted server** that lets phones on other networks buzz in
 over the internet (#99).
 
@@ -21,10 +21,10 @@ mobile data, or on a network that blocks devices from seeing each other.
 - One server runs several rooms. If the Mac drops, its room and phones are kept for the
   grace period (30–60 s) so it can reconnect; after that phones are told the game ended.
 
-Protocol details: [`docs/buzzer-protocol.md`](../../docs/buzzer-protocol.md#self-hosted-server).
+Protocol details: [`buzzer-protocol.md`](https://github.com/liljimmyk99/Macpardy/blob/master/docs/buzzer-protocol.md#self-hosted-server).
 
 The full setup guide (DuckDNS, port forwarding, HTTPS, troubleshooting) is
-[`docs/self-hosting.md`](../../docs/self-hosting.md). In short:
+[`docs/self-hosting.md`](docs/self-hosting.md). In short:
 
 ## Run it with Docker Compose
 
@@ -32,7 +32,7 @@ You need a machine reachable from the internet with Docker, ports 80 and 443 for
 it, and a domain name pointing at it. A free [DuckDNS](https://www.duckdns.org) name works.
 
 ```sh
-cd Packages/MacpardyBuzzer
+cd Macpardy-Buzzer-Server
 cp .env.example .env                      # set MACPARDY_DOMAIN (and DuckDNS, if used)
 openssl rand -hex 32 > deploy/host_token.txt
 chmod 0444 deploy/host_token.txt          # the server runs as a non-root user
@@ -108,3 +108,16 @@ it at `https://…` to check a deployment end to end (Node 22+).
 | `BuzzerHub` | Many rooms, host sessions, grace period, config. No I/O |
 | `BuzzerServerNIO` | HTTP and WebSocket transport on SwiftNIO |
 | `macpardy-buzzer-server` | The executable (`healthcheck` subcommand for Docker) |
+
+## Using it from the app
+
+The Macpardy app depends on this package (`BuzzerCore`, `BuzzerHostProtocol`, `BuzzerWebPage`)
+through a pinned version, set in the app's `Project.swift`. Changing the phone protocol or the
+host protocol here means releasing a new version and bumping the pin in the app, and updating
+the protocol doc in the app repo.
+
+## Releasing
+
+Bump `VERSION` in its own PR, merge it, then run the **Release** workflow on `master`. It
+tests, pushes the image to GHCR as `ghcr.io/liljimmyk99/macpardy-buzzer-server:<version>` and
+`:latest`, and tags the commit `<version>` (the tag the app pins).
