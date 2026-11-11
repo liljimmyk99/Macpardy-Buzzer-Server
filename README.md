@@ -23,6 +23,9 @@ mobile data, or on a network that blocks devices from seeing each other.
 
 Protocol details: [`docs/buzzer-protocol.md`](../../docs/buzzer-protocol.md#self-hosted-server).
 
+The full setup guide (DuckDNS, port forwarding, HTTPS, troubleshooting) is
+[`docs/self-hosting.md`](../../docs/self-hosting.md). In short:
+
 ## Run it with Docker Compose
 
 You need a machine reachable from the internet with Docker, ports 80 and 443 forwarded to
